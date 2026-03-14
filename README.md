@@ -112,7 +112,7 @@ Based on these parameters, the model predicts the **probability of rain**.
 
 
 ## Project Dashbord
- ![Weather Dashboard] (ml weather.png)
+ ![Dashboard] (images/dashboard.png)
 
 ---
 
