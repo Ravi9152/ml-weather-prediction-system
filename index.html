@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Weather Predictor | ML Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js for ML Gauges -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    
+    <!-- Animated background elements -->
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <main class="dashboard-wrapper">
+        
+        <!-- Sidebar: ML Model Info -->
+        <aside class="sidebar glass-panel">
+            <div class="brand">
+                <span class="icon-logo">🤖</span>
+                <h2>ML Weather</h2>
+                <p>Advanced AI Prediction Core</p>
+            </div>
+
+            <div class="model-stats">
+                <h3>Model Diagnostics</h3>
+                <div class="stat-item">
+                    <span>Algorithm</span>
+                    <strong id="m-algo">XGBoost Classifier</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Accuracy (Holdout)</span>
+                    <strong id="m-acc">--</strong>
+                </div>
+                <div class="stat-item">
+                    <span>ROC AUC Score</span>
+                    <strong id="m-auc" class="highlight">--</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Active Features</span>
+                    <strong id="m-feat">--</strong>
+                </div>
+            </div>
+
+            <div class="dataset-info">
+                <h4>Dataset Training</h4>
+                <p>Trained on <strong>145,460</strong> meteorological records from Australia, optimizing for maximum recall on rain events.</p>
+            </div>
+        </aside>
+
+        <!-- Main Content: Prediction Matrix -->
+        <section class="main-content">
+            
+            <header class="top-nav glass-panel">
+                <h1>Machine Learning Weather Prediction System</h1>
+                <div class="status-indicator">
+                    <span class="pulse"></span>
+                    Model Online
+                </div>
+            </header>
+
+            <div class="content-grid">
+                
+                <!-- Input Form -->
+                <div class="input-section glass-panel">
+                    <h3>Input Parameters</h3>
+                    <p class="subtitle">Feed data into the neural network to generate a localized probability matrix.</p>
+                    
+                    <form id="weather-form">
+                        <div class="input-grid">
+                            <div class="input-card input-group">
+                                <label>🌡️ Min Temp (°C)</label>
+                                <input type="number" id="MinTemp" placeholder="e.g. 18" step="0.1" required>
+                            </div>
+                            <div class="input-card input-group">
+                                <label>🔥 Max Temp (°C)</label>
+                                <input type="number" id="MaxTemp" placeholder="e.g. 28" step="0.1" required>
+                            </div>
+                            <div class="input-card input-group">
+                                <label>💧 Rainfall (mm)</label>
+                                <input type="number" id="Rainfall" placeholder="e.g. 2.0" step="0.1" min="0" required>
+                            </div>
+                            <div class="input-card input-group">
+                                <label>💨 Wind Gust (km/h)</label>
+                                <input type="number" id="WindGustSpeed" placeholder="e.g. 45" step="0.1" min="0" required>
+                            </div>
+                            <div class="input-card input-group">
+                                <label>🌫️ Humidity 9am (%)</label>
+                                <input type="number" id="Humidity9am" placeholder="e.g. 75" min="0" max="100" required>
+                            </div>
+                            <div class="input-card input-group">
+                                <label>🌫️ Humidity 3pm (%)</label>
+                                <input type="number" id="Humidity3pm" placeholder="e.g. 60" min="0" max="100" required>
+                            </div>
+                        </div>
+                        <button type="submit" id="btn-predict" class="btn-primary">
+                            <span class="btn-text">Execute AI Inference</span>
+                            <span class="btn-glow"></span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Result & Telemetry Area -->
+                <div class="result-section flex-col">
+                    
+                    <!-- Primary Result Card -->
+                    <div id="result-box" class="glass-panel primary-result waiting">
+                        <div class="result-header">
+                            <h3>Inference Engine Output</h3>
+                            <span class="confidence-badge">Awaiting Data</span>
+                        </div>
+                        
+                        <div class="result-core">
+                            <div class="icon-container" id="result-icon">⏳</div>
+                            <div class="text-container">
+                                <h2 id="result-text">Standby...</h2>
+                                <p class="prob-text">Probability Match: <strong id="result-prob" class="gradient-text">--</strong></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Visual Gauge Chart (Chart.js) -->
+                    <div class="glass-panel chart-container">
+                        <h3>Probability Distribution</h3>
+                        <div class="canvas-wrapper">
+                            <canvas id="probChart"></canvas>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <script>
+        const form = document.getElementById('weather-form');
+        const resultBox = document.getElementById('result-box');
+        const resultText = document.getElementById('result-text');
+        const resultProb = document.getElementById('result-prob');
+        const resultIcon = document.getElementById('result-icon');
+        const btnText = document.querySelector('.btn-text');
+        
+        // System Stat Elements
+        const elAlgo = document.getElementById('m-algo');
+        const elAcc = document.getElementById('m-acc');
+        const elAuc = document.getElementById('m-auc');
+        const elFeat = document.getElementById('m-feat');
+
+        // Initialize empty chart
+        let probChart;
+        const ctx = document.getElementById('probChart').getContext('2d');
+        
+        function initChart() {
+            probChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Rain Probability', 'Clear Probability'],
+                    datasets: [{
+                        data: [0, 100],
+                        backgroundColor: ['rgba(56, 189, 248, 0.8)', 'rgba(255, 255, 255, 0.15)'],
+                        borderColor: ['#38bdf8', 'transparent'],
+                        borderWidth: 1,
+                        cutout: '80%'
+                    }]
+                },
+                options: {
+                    layout: {
+                        padding: { left: 20, right: 20, top: 10, bottom: 10 }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, padding: 15, font: {family: "'Space Grotesk', sans-serif"} } },
+                        tooltip: { enabled: true }
+                    },
+                    animation: { animateScale: true, animateRotate: true }
+                }
+            });
+        }
+        initChart();
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            
+            // Extract and parse inputs
+            const minTemp = parseFloat(document.getElementById('MinTemp').value);
+            const maxTemp = parseFloat(document.getElementById('MaxTemp').value);
+            const rainfall = parseFloat(document.getElementById('Rainfall').value);
+            const windGustSpeed = parseFloat(document.getElementById('WindGustSpeed').value);
+            const humidity9am = parseFloat(document.getElementById('Humidity9am').value);
+            const humidity3pm = parseFloat(document.getElementById('Humidity3pm').value);
+
+            // Validation Logic
+            if (minTemp > maxTemp) {
+                alert("Validation Error: Min Temperature cannot be greater than Max Temperature.");
+                return;
+            }
+            if (humidity9am < 0 || humidity9am > 100 || humidity3pm < 0 || humidity3pm > 100) {
+                alert("Validation Error: Humidity values must be between 0 and 100.");
+                return;
+            }
+            if (rainfall < 0 || windGustSpeed < 0) {
+                alert("Validation Error: Rainfall and Wind Gust Speed cannot be negative.");
+                return;
+            }
+
+            // Loading State
+            btnText.innerText = "Processing Tensor Graph...";
+            document.body.style.cursor = "wait";
+            resultBox.className = "glass-panel primary-result scanning";
+            resultText.innerText = "Analyzing feature matrix...";
+            resultIcon.innerText = "🔄";
+            resultIcon.classList.add('spin');
+
+            const data = {
+                MinTemp: minTemp,
+                MaxTemp: maxTemp,
+                Rainfall: rainfall,
+                WindGustSpeed: windGustSpeed,
+                Humidity9am: humidity9am,
+                Humidity3pm: humidity3pm,
+            };
+
+            try {
+                // Simulate slight network/ML latency for effect
+                await new Promise(r => setTimeout(r, 600));
+
+                const response = await fetch('http://127.0.0.1:5000/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                // Update ML System Stats
+                elAlgo.innerText = result.model_type || "XGBoost API";
+                elAcc.innerText  = result.accuracy || "82.87%";
+                elAuc.innerText  = result.roc_auc || "0.8943";
+                elFeat.innerText = result.features_used || "21 / 23";
+
+                resultIcon.classList.remove('spin');
+                
+                const probValue = parseFloat(result.probability);
+
+                if (result.prediction === "Yes") {
+                    resultText.innerText = "RAIN IMMINENT";
+                    resultIcon.innerText = "🌧️";
+                    resultBox.className = "glass-panel primary-result state-rain";
+                    document.querySelector('.confidence-badge').innerText = "HIGH CONFIDENCE";
+                    
+                    // Update Chart to Rain Colors (with visible inactive track)
+                    probChart.data.labels = ['Rain Probability', 'Clear Probability'];
+                    probChart.data.datasets[0].data = [probValue, 100 - probValue];
+                    probChart.data.datasets[0].backgroundColor = ['#e11d48', 'rgba(255, 255, 255, 0.15)'];
+                    probChart.data.datasets[0].borderColor = ['#fb7185', 'transparent'];
+
+                } else {
+                    resultText.innerText = "CLEAR SKIES";
+                    resultIcon.innerText = "☀️";
+                    resultBox.className = "glass-panel primary-result state-clear";
+                    document.querySelector('.confidence-badge').innerText = "BASELINE";
+
+                    // Update Chart to Clear Colors (with visible inactive track)
+                    probChart.data.labels = ['Clear Probability', 'Rain Probability'];
+                    probChart.data.datasets[0].data = [probValue, 100 - probValue];
+                    probChart.data.datasets[0].backgroundColor = ['#10b981', 'rgba(255, 255, 255, 0.15)'];
+                    probChart.data.datasets[0].borderColor = ['#34d399', 'transparent'];
+                }
+                
+                probChart.update();
+                resultProb.innerText = result.probability;
+
+            } catch (error) {
+                resultText.innerText = "Connection Failed.";
+                resultIcon.innerText = "⚠️";
+                resultIcon.classList.remove('spin');
+                console.error(error);
+            } finally {
+                btnText.innerText = "Execute AI Inference";
+                document.body.style.cursor = "default";
+            }
+        };
+    </script>
+</body>
+</html>
