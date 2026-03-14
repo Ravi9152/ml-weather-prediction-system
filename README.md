@@ -110,6 +110,10 @@ The model uses the following inputs:
 
 Based on these parameters, the model predicts the **probability of rain**.
 
+
+## Project Dashbord
+ ![Weather Dashboard] (dashboard.png)
+
 ---
 
 ## 👨‍💻 Author
